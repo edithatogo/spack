@@ -66,7 +66,6 @@ from spack import traverse
 from spack.compilers.libraries import CompilerPropertyDetector
 from spack.llnl.util.lang import elide_list
 from spack.spec import EMPTY_SPEC
-from spack.util.compression import GZipFileType
 
 from .core import (
     AspFunction,
@@ -545,11 +544,19 @@ class ConcretizationCache:
     asp problem and the involved control files.
     """
 
+    # Used to version cache files. Bump this when the cache format changes.
+    VERSION = 1
+
     def __init__(self, root: Union[str, None] = None):
         root = root or spack.config.get("concretizer:concretization_cache:url", None)
         if root is None:
             root = os.path.join(spack.caches.misc_cache_location(), "concretization")
+
+        # cache is versioned so that we can easily upgrade it over time
         self.root = pathlib.Path(spack.util.path.canonicalize_path(root))
+        self.root /= f"v{ConcretizationCache.VERSION}"
+
+        # create root and lockfile
         self.root.mkdir(parents=True, exist_ok=True)
         self._lockfile = self.root / ".cc_lock"
 
@@ -601,27 +608,6 @@ class ConcretizationCache:
             # old style concretization cache entries are in directories
             if not cache_entry.name.startswith(".") and cache_entry.is_file():
                 yield cache_entry
-
-    def _results_from_cache(self, cache_entry_file: str) -> Union[Result, None]:
-        """Returns a Results object from the concretizer cache
-
-        Reads the cache hit and uses `Result`'s own deserializer
-        to produce a new Result object
-        """
-
-        cache_entry = json.loads(cache_entry_file)
-        result_json = cache_entry["results"]
-        return Result.from_dict(result_json)
-
-    def _stats_from_cache(self, cache_entry_file: str) -> Union[Dict, None]:
-        """Returns concretization statistic from the
-        concretization associated with the cache.
-
-        Deserializes the the json representation of the
-        statistics covering the cached concretization run
-        and returns the Python data structures
-        """
-        return json.loads(cache_entry_file)["statistics"]
 
     def _prefix_digest(self, problem: str) -> str:
         """Return the first two characters of, and the full, sha256 of the given asp problem"""
@@ -698,6 +684,8 @@ class ConcretizationCache:
         problem.
         """
         cache_path = self._cache_path_from_problem(problem)
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+
         with self.write_transaction(cache_path, timeout=30):
             if cache_path.exists():
                 # if cache path file exists, we already have a cache entry, likely created
@@ -705,7 +693,11 @@ class ConcretizationCache:
                 return
 
             with gzip.open(cache_path, "xb", compresslevel=6) as cache_entry:
-                cache_dict = {"results": result.to_dict(), "statistics": statistics}
+                cache_dict = {
+                    "_meta": {"version": ConcretizationCache.VERSION},
+                    "results": result.to_dict(),
+                    "statistics": statistics,
+                }
                 cache_entry.write(json.dumps(cache_dict).encode())
 
     def fetch(self, problem: str) -> Union[Tuple[Result, Dict], Tuple[None, None]]:
@@ -726,19 +718,13 @@ class ConcretizationCache:
                     with gzip.open(cache_path, "rb", compresslevel=6) as f:
                         f.peek(1)  # Try to read at least one byte
                         f.seek(0)
-                        cache_content = f.read().decode("utf-8")
+                        cache_data = f.read().decode("utf-8")
+                        cache_content = json.loads(cache_data)
 
-                except OSError:
-                    # Cache may have been created pre compression check if gzip, and if not,
-                    # read from plaintext otherwise re raise
-                    with open(cache_path, "rb") as f:
-                        # raise if this is a gzip file we failed to open
-                        if GZipFileType().matches_magic(f):
-                            raise
-                        cache_content = f.read().decode()
-
-                except FileNotFoundError:
-                    pass  # cache miss, already cleaned up
+                except (OSError, FileNotFoundError, json.JSONDecodeError):
+                    # If any of this happens, it's a cache miss.
+                    # We'll just overwrite the corrupt file with a new one.
+                    pass
 
         except lk.LockTimeoutError:
             pass  # if the lock times, out skip the cache
@@ -746,12 +732,20 @@ class ConcretizationCache:
         if not cache_content:
             return None, None
 
+        # miss if the metadata we find is not the same version as we're using here.
+        cache_version = cache_content.get("_meta", {}).get("version")
+        if not cache_version or cache_version != ConcretizationCache.VERSION:
+            return None, None
+
         # update mod/access time for use w/ LRU cleanup
         os.utime(cache_path)
-        return (
-            self._results_from_cache(cache_content),
-            self._stats_from_cache(cache_content),
-        )  # type: ignore
+
+        try:
+            result = Result.from_dict(cache_content["results"])
+            return result, cache_content["statistics"]
+
+        except (KeyError, spack.error.SpecSyntaxError):
+            return None, None
 
 
 def _is_checksummed_git_version(v):
