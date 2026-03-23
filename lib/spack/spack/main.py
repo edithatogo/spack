@@ -1121,6 +1121,9 @@ def main(argv=None):
             the executable name. If None, parses from sys.argv.
 
     """
+    if sys.platform == "darwin" and multiprocessing.get_start_method(allow_none=True) is None:
+        # Use forkserver instead of spawn on macOS for faster startup of build processes.
+        multiprocessing.set_start_method("forkserver")
     # When using the forkserver start method, preload the following modules to improve startup
     # time of child processes.
     multiprocessing.set_forkserver_preload(["spack.main", "spack.package", "spack.new_installer"])
