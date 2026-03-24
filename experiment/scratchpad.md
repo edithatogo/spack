@@ -12,3 +12,4 @@
 | 6 | inline parser classes + replace accept/expect with direct dispatch | 2 | 1289.36 | -221.06 | inlined SpecNodeParser, EdgeAttributeParser, FileParser into SpecParser; use `is` for kind checks; manual advance |
 | 7a | TokenContext drives scanner directly — no Token alloc, no generator | 1 | 966.24 | -323.12 | Replace generator+Token with scanner+re.Match in TokenContext; dispatch via lastgroup/group(); _parse_edge_attrs returns (attrs, substitute) |
 | 7b | FAST_SPEC_REGEX + flatten ctx to curr/next | 2 | 875.54 | -90.70 | \s* prefix for C-level WS; drop TokenContext; SpecParser holds curr/next inline; cache Spec class in _Spec |
+| 7c | reorder declarations to match reference commit | — | 863.45 | -12.09 | pure reorder + conf.py import fix; no functional changes; parity with ea96bb688 |
