@@ -244,18 +244,74 @@ Expected perf impact: **small-moderate** — fewer token types and branches.
 
 ---
 
-## Step 5 — Full architectural shift: scanner + no Token/TokenContext + flat parser (Categories 1, 2, 3)
+## Step 5 — Inline parser classes + replace accept()/expect() with direct dispatch (Category 2)
+
+**What and why:** The current code creates a new `SpecNodeParser(ctx, literal_str)` object on
+every node, an `EdgeAttributeParser(ctx, literal_str)` object on every edge, and a
+`FileParser(ctx)` object on every filename — each with `__init__` overhead and a `.parse()`
+method call. Inside those parsers, every token check goes through `ctx.accept(kind)` (a method
+call that does `next_token.kind == kind` + `advance()`) or `ctx.expect(kind)`. This step
+eliminates that overhead while keeping `Token`, `Tokenizer`, and `TokenContext` intact.
+
+**Changes to `lib/spack/spack/spec_parser.py` only:**
+
+### 5a. Inline SpecNodeParser, EdgeAttributeParser, FileParser into SpecParser
+
+Move the bodies of `SpecNodeParser.parse()`, `EdgeAttributeParser.parse()`, and
+`FileParser.parse()` directly into `SpecParser` as private methods (`_parse_node`,
+`_parse_edge_attrs`, `_parse_file`). Delete the three helper classes. `SpecParser._parse_node()`
+already exists as a thin wrapper — replace its body with the full inlined logic.
+`SpecParser.__slots__` gains `has_version` if needed, or use a local variable.
+
+### 5b. Replace accept()/expect() with inline kind checks + manual advance
+
+In the inlined parse loops, instead of:
+```python
+if self.ctx.accept(SpecTokens.VERSION):
+    ...use self.ctx.current_token...
+```
+read the next token's kind once per loop iteration and advance manually:
+```python
+# at the top of the while-loop body (or before each if-chain):
+next_tok = self.ctx.next_token
+if next_tok is None:
+    break
+kind = next_tok.kind
+
+if kind is SpecTokens.VERSION:
+    self.ctx.advance()
+    tok = self.ctx.current_token
+    ...
+elif kind is SpecTokens.BOOL_VARIANT:
+    self.ctx.advance()
+    tok = self.ctx.current_token
+    ...
+```
+
+Replace `self.ctx.expect(SpecTokens.X)` with `self.ctx.next_token and self.ctx.next_token.kind is SpecTokens.X`.
+
+Use `is` rather than `==` for enum comparisons (identity check, no `__eq__` call).
+
+`TokenContext.advance()` stays — it is called at most once per token, which is fine.
+
+Expected perf impact: **moderate** — removes 1–2 Python method calls per token dispatched and
+eliminates per-node/per-edge object allocation. `accept()` and `expect()` are called ~6–10 times
+per spec token, so this compounds across the token stream.
+
+---
+
+## Step 6 — Full architectural shift: scanner + no Token/TokenContext + flat parser (Categories 1, 2, 3)
 
 **What and why:** Replace the `Tokenizer` + `TokenContext` + `Token` objects with a single
 compiled `FAST_SPEC_REGEX` and a direct scanner. This eliminates:
 - **Category 1 (fewer allocations):** no `Token` object per match — use `re.Match` directly
-- **Category 2 (reduced fn calls):** no `SpecNodeParser` / `EdgeAttributeParser` / `FileParser`
-  classes; no `accept()` / `expect()` on TokenContext
+- **Category 2 (reduced fn calls):** remaining `TokenContext.advance()` overhead; no more
+  attribute indirection through `self.ctx`
 - **Category 3 (reduced iterations):** `\s*` prefix in `FAST_SPEC_REGEX` means whitespace is
   consumed at C level, never producing a Python object
 
-By now (after steps 3–4), the token types are already consolidated and use subgroups — so this
-step is purely an architectural swap with no logic changes needed.
+By now (after steps 3–5), the token types are already consolidated, use subgroups, and the
+parse logic is already flat — so this step is a mechanical swap of the token infrastructure.
 
 Apply the full diff for these files from `ea96bb688...`:
 - `lib/spack/spack/spec_parser.py`
@@ -267,20 +323,19 @@ The key structural changes (verify your implementation matches):
 - `SpecTokens` becomes a plain string namespace (not `TokenBase` enum)
 - `RAW_PATTERNS` list + group name mangling builds `FAST_SPEC_REGEX`
 - `SpecParser.__init__`: `scanner = FAST_SPEC_REGEX.scanner(text)`, `curr = scanner.match()`, `next = scanner.match()`
-- All dispatch: `curr.lastgroup == "BOOL_VARIANT"` instead of `ctx.accept(SpecTokens.BOOL_VARIANT)`
+- All dispatch: `curr.lastgroup == "BOOL_VARIANT"` instead of checking `kind is SpecTokens.BOOL_VARIANT`
 - All subgroup access: `curr.group("BOOL_VARIANT_bv_prefix")` (note: mangled names) instead of `token.subvalues["bv_prefix"]`
 - No `from spack.tokenize import ...`
 - No `Token`, `TokenContext`, `SpecNodeParser`, `EdgeAttributeParser`, `FileParser`
 
-Expected perf impact: **large** — eliminates per-match Python object allocation and removes
-the class-call overhead from `accept()` / `SpecNodeParser.parse()` etc.
+Expected perf impact: **large** — eliminates per-match `Token` object allocation and the
+remaining `TokenContext.advance()` + attribute indirection overhead.
 
 ---
 
 ## Notes
 
-- Do NOT try to split step 5 further — the Token-object removal and class flattening are
-  deeply interleaved in the diff and cannot produce a passing intermediate state alone.
 - Steps 3 and 4 each leave the parser fully functional on the old `Tokenizer` architecture.
+- Step 5 leaves the parser functional with `Token`/`Tokenizer` intact — only the call structure changes.
 - The benchmark runs 10,000 iterations per spec; run it ONCE per step.
 - Do NOT add module-level caches keyed on input strings.
