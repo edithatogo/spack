@@ -597,6 +597,7 @@ corresponding group.
 from .environment import (
     TOP_LEVEL_KEY,
     Environment,
+    EnvironmentConcretizer,
     SpackEnvironmentConfigError,
     SpackEnvironmentDevelopError,
     SpackEnvironmentError,
@@ -637,6 +638,7 @@ from .environment import (
 __all__ = [
     "TOP_LEVEL_KEY",
     "Environment",
+    "EnvironmentConcretizer",
     "SpackEnvironmentConfigError",
     "SpackEnvironmentDevelopError",
     "SpackEnvironmentError",
