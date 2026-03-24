@@ -60,7 +60,7 @@ import json
 import os
 import re
 import sys
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type, Union
 
 import spack.deptypes
 import spack.error
@@ -72,8 +72,9 @@ from spack.llnl.util.tty import color
 if TYPE_CHECKING:
     import spack.spec
 
-# Lazily-initialized cache for the Spec class (avoids repeated local import overhead in _parse_node)
-_Spec: Optional[type] = None
+# Cannot use from spack.spec import Spec due to circularities, so we lazily
+# import it inline and bind it here to avoid expensive local imports
+Spec: Optional[Type["spack.spec.Spec"]] = None
 
 #: Valid name for specs and variants. Here we are not using
 #: the previous ``w[\w.-]*`` since that would match most
@@ -552,10 +553,12 @@ class SpecParser:
         """Parse a single spec node"""
         spec = initial_spec
         if spec is None:
-            global _Spec
-            if _Spec is None:
+            global Spec
+            if Spec is None:
                 from spack.spec import Spec as _Spec
-            spec = _Spec()
+
+                Spec = _Spec  # just `from spack.spec import Spec` is insufficient for mypy
+            spec = Spec()
 
         curr, next, scanner = self.curr, self.next, self.scanner
 
