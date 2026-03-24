@@ -606,9 +606,7 @@ class SpecParser:
                     )
                     spec.attach_git_version_lookup()
                 else:
-                    spec.versions = spack.version.VersionList._from_version_list_string(
-                        curr.group("VERSION_version_list")
-                    )
+                    spec.versions = spack.version.VersionList(curr.group("VERSION_version_list"))
                 has_version = True
 
             elif kind == "BOOL_VARIANT":
