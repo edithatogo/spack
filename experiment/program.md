@@ -244,7 +244,53 @@ Expected perf impact: **small-moderate** — fewer token types and branches.
 
 ---
 
-## Step 5 — Inline parser classes + replace accept()/expect() with direct dispatch (Category 2)
+## Step 5 — Skip WS tokens before allocation (Category 3)
+
+**What and why:** `Tokenizer.tokenize()` currently yields a `Token` object for every whitespace
+run, which `parseable_tokens()` then discards via `filter(lambda x: x.kind != SpecTokens.WS, ...)`.
+A spec like `mpileaks ^openmpi @1.2 +debug %gcc target=zen2` has ~6 whitespace separators — that's
+6 Token allocations and 6 filter lambda calls that produce nothing useful. The fix: check for WS
+*before* constructing the Token and skip yielding it, then remove the now-redundant
+`parseable_tokens()` wrapper entirely.
+
+**Changes to `lib/spack/spack/spec_parser.py` only:**
+
+In the module-level `tokenize()` function, change from yielding all tokens (relying on
+`parseable_tokens()` to filter WS) to skipping WS inline:
+
+```python
+# BEFORE:
+def tokenize(text: str) -> Iterator[Token]:
+    for token in SPEC_TOKENIZER.tokenize(text):
+        if token.kind == SpecTokens.UNEXPECTED:
+            raise SpecTokenizationError(list(SPEC_TOKENIZER.tokenize(text)), text)
+        yield token
+
+def parseable_tokens(text: str) -> Iterator[Token]:
+    return filter(lambda x: x.kind != SpecTokens.WS, tokenize(text))
+
+# AFTER:
+def tokenize(text: str) -> Iterator[Token]:
+    for token in SPEC_TOKENIZER.tokenize(text):
+        if token.kind == SpecTokens.UNEXPECTED:
+            raise SpecTokenizationError(list(SPEC_TOKENIZER.tokenize(text)), text)
+        if token.kind != SpecTokens.WS:
+            yield token
+```
+
+Remove `parseable_tokens()` and update its two call sites to call `tokenize()` directly:
+- `SpecParser.__init__`: `self.ctx = TokenContext(tokenize(literal_str))`
+- `SpecParser.tokens()`: `return list(tokenize(self.literal_str))`
+
+No changes to `tokenize.py` or any other file.
+
+Expected perf impact: **small** — eliminates one Token allocation and one filter call per
+whitespace separator. For typical specs with 5–10 space-separated tokens, that's ~5–10 fewer
+allocations per parse.
+
+---
+
+## Step 6 — Inline parser classes + replace accept()/expect() with direct dispatch (Category 2)
 
 **What and why:** The current code creates a new `SpecNodeParser(ctx, literal_str)` object on
 every node, an `EdgeAttributeParser(ctx, literal_str)` object on every edge, and a
@@ -300,7 +346,7 @@ per spec token, so this compounds across the token stream.
 
 ---
 
-## Step 6 — Full architectural shift: scanner + no Token/TokenContext + flat parser (Categories 1, 2, 3)
+## Step 7 — Full architectural shift: scanner + no Token/TokenContext + flat parser (Categories 1, 2, 3)
 
 **What and why:** Replace the `Tokenizer` + `TokenContext` + `Token` objects with a single
 compiled `FAST_SPEC_REGEX` and a direct scanner. This eliminates:
@@ -310,8 +356,9 @@ compiled `FAST_SPEC_REGEX` and a direct scanner. This eliminates:
 - **Category 3 (reduced iterations):** `\s*` prefix in `FAST_SPEC_REGEX` means whitespace is
   consumed at C level, never producing a Python object
 
-By now (after steps 3–5), the token types are already consolidated, use subgroups, and the
-parse logic is already flat — so this step is a mechanical swap of the token infrastructure.
+By now (after steps 3–6), the token types are already consolidated, use subgroups, WS is no
+longer iterated, and the parse logic is already flat — so this step is a mechanical swap of
+the token infrastructure.
 
 Apply the full diff for these files from `ea96bb688...`:
 - `lib/spack/spack/spec_parser.py`
@@ -336,6 +383,7 @@ remaining `TokenContext.advance()` + attribute indirection overhead.
 ## Notes
 
 - Steps 3 and 4 each leave the parser fully functional on the old `Tokenizer` architecture.
-- Step 5 leaves the parser functional with `Token`/`Tokenizer` intact — only the call structure changes.
+- Step 5 leaves the parser functional with `Token`/`Tokenizer` intact — only WS handling changes.
+- Step 6 leaves the parser functional with `Token`/`Tokenizer` intact — only the call structure changes.
 - The benchmark runs 10,000 iterations per spec; run it ONCE per step.
 - Do NOT add module-level caches keyed on input strings.
