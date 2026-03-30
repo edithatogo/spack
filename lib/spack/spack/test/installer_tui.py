@@ -16,6 +16,7 @@ import os
 from multiprocessing import Pipe
 from typing import List, Optional, Tuple
 
+import spack.llnl.util.tty.color
 import spack.new_installer as inst
 from spack.new_installer import BuildStatus
 
@@ -1352,7 +1353,8 @@ class TestBuildStatusColor:
         status.add_build(spec, explicit=True)
         status.update_state(spec.dag_hash(), "finished")
         # green indicator, reset, dark-gray hash
-        assert stdout.getvalue().startswith("\033[32m[+]\033[0m \033[0;90m")
+        expected = spack.llnl.util.tty.color.colorize("@g[+]@. @K", color=True)
+        assert stdout.getvalue().startswith(expected)
 
     def test_non_tty_failed_color_true_emits_red(self):
         """color=True in non-TTY mode: failed line has per-component ANSI colors."""
@@ -1361,7 +1363,8 @@ class TestBuildStatusColor:
         status.add_build(spec, explicit=True)
         status.update_state(spec.dag_hash(), "failed")
         # red indicator, reset, dark-gray hash
-        assert stdout.getvalue().startswith("\033[31m[x]\033[0m \033[0;90m")
+        expected = spack.llnl.util.tty.color.colorize("@r[x]@. @K", color=True)
+        assert stdout.getvalue().startswith(expected)
 
     def test_non_tty_finished_color_false_no_ansi(self):
         """color=False in non-TTY mode: finished line has no ANSI escape codes."""
