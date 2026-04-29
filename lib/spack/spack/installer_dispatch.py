@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, List, Optional, Set, Union
 from spack.vendor.typing_extensions import Literal
 
 import spack.config
-import spack.traverse
 
 if TYPE_CHECKING:
     import spack.installer
@@ -47,13 +46,6 @@ def create_installer(
         sys.platform == "win32" or spack.config.get("config:installer", "new") == "old"
     )
 
-    # Use the old installer if splicing is used.
-    if not use_old_installer:
-        specs = [pkg.spec for pkg in packages]
-        for s in spack.traverse.traverse_nodes(specs):
-            if s.build_spec is not s:
-                use_old_installer = True
-                break
     if use_old_installer:
         from spack.installer import PackageInstaller  # type: ignore
     else:
