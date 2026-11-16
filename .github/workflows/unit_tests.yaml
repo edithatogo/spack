@@ -8,6 +8,9 @@ concurrency:
   group: unit_tests-${{github.ref}}-${{github.event.pull_request.number || github.run_number}}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   # Run unit tests with different configurations on linux
   ubuntu:
@@ -37,6 +40,11 @@ jobs:
           on_develop: false
 
     steps:
+    - name: Harden the runner (Audit all outbound calls)
+      uses: step-security/harden-runner@v2
+      with:
+        egress-policy: audit
+
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       with:
         fetch-depth: 0
@@ -93,6 +101,11 @@ jobs:
   shell:
     runs-on: ubuntu-latest
     steps:
+    - name: Harden the runner (Audit all outbound calls)
+      uses: step-security/harden-runner@v2
+      with:
+        egress-policy: audit
+
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       with:
         fetch-depth: 0
@@ -135,6 +148,11 @@ jobs:
     runs-on: ubuntu-latest
     container: registry.access.redhat.com/ubi8/ubi
     steps:
+    - name: Harden the runner (Audit all outbound calls)
+      uses: step-security/harden-runner@v2
+      with:
+        egress-policy: audit
+
     - name: Install dependencies
       run: |
           dnf install -y \
@@ -163,6 +181,11 @@ jobs:
   clingo-cffi:
     runs-on: ubuntu-latest
     steps:
+    - name: Harden the runner (Audit all outbound calls)
+      uses: step-security/harden-runner@v2
+      with:
+        egress-policy: audit
+
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       with:
         fetch-depth: 0
@@ -202,6 +225,11 @@ jobs:
         os: [macos-15-intel, macos-latest]
         python-version: ["3.14"]
     steps:
+    - name: Harden the runner (Audit all outbound calls)
+      uses: step-security/harden-runner@v2
+      with:
+        egress-policy: audit
+
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       with:
         fetch-depth: 0
@@ -239,6 +267,11 @@ jobs:
           powershell Invoke-Expression -Command "./share/spack/qa/windows_test_setup.ps1"; {0}
     runs-on: windows-latest
     steps:
+    - name: Harden the runner (Audit all outbound calls)
+      uses: step-security/harden-runner@v2
+      with:
+        egress-policy: audit
+
     - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       with:
         fetch-depth: 0
@@ -271,6 +304,11 @@ jobs:
       image: ghcr.io/spack/all-pythons:2025-10-10
 
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
       - name: Checkout Spack (current)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:

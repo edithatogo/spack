@@ -12,6 +12,9 @@ concurrency:
   group: bootstrap-${{github.ref}}-${{github.event.pull_request.number || github.run_number}}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   distros-clingo-sources:
     if: github.repository == 'spack/spack'
@@ -21,6 +24,11 @@ jobs:
       matrix:
         image: ["fedora:latest", "opensuse/leap:latest"]
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
       - name: Setup Fedora
         if: ${{ matrix.image == 'fedora:latest' }}
         run: |
@@ -57,6 +65,11 @@ jobs:
       matrix:
         runner: ["macos-15-intel", "macos-latest", "ubuntu-latest"]
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
       - name: Setup macOS
         if: ${{ matrix.runner != 'ubuntu-latest' }}
         run: brew install bison tree
@@ -84,6 +97,11 @@ jobs:
       matrix:
         runner: ["macos-15-intel", "macos-latest", "ubuntu-latest"]
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
       - name: Setup macOS
         if: ${{ matrix.runner != 'ubuntu-latest' }}
         run: brew install tree gawk
@@ -113,6 +131,11 @@ jobs:
       matrix:
         runner: ["macos-15-intel", "macos-latest", "ubuntu-latest"]
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
       - name: Setup macOS
         if: ${{ matrix.runner != 'ubuntu-latest' }}
         run: brew install tree
@@ -164,6 +187,11 @@ jobs:
     if: github.repository == 'spack/spack'
     runs-on: "windows-latest"
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
@@ -194,6 +222,11 @@ jobs:
     runs-on: ubuntu-latest
     container: registry.access.redhat.com/ubi8/ubi
     steps:
+    - name: Harden the runner (Audit all outbound calls)
+      uses: step-security/harden-runner@v2
+      with:
+        egress-policy: audit
+
     - name: Install dependencies
       run: |
           dnf install -y \
