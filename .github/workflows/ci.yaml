@@ -25,6 +25,11 @@ jobs:
       core: ${{ steps.filter.outputs.core }}
       packages: ${{ steps.filter.outputs.packages }}
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         if: ${{ github.event_name == 'push' || github.event_name == 'merge_group' }}
         with:
@@ -86,6 +91,11 @@ jobs:
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
+    - name: Harden the runner (Audit all outbound calls)
+      uses: step-security/harden-runner@v2
+      with:
+        egress-policy: audit
+
     - name: Success
       run: |
         [ "${{ needs.prechecks.result }}" = "success" ] && exit 0
@@ -105,6 +115,11 @@ jobs:
     runs-on: ubuntu-latest
     # See https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/accessing-contextual-information-about-workflow-runs#needs-context
     steps:
+    - name: Harden the runner (Audit all outbound calls)
+      uses: step-security/harden-runner@v2
+      with:
+        egress-policy: audit
+
     - name: Status summary
       run: |
         if [ "${{ needs.unit-tests.result }}" = "success" ] || [ "${{ needs.unit-tests.result }}" = "skipped" ]; then
